@@ -113,15 +113,18 @@ input:focus,textarea:focus{outline:none;border-color:#fff}
 .row.past:not(.now) .t,.row.past:not(.now) .nm{color:var(--muted)}
 .row.done .nm{text-decoration:line-through;color:var(--muted)}
 .row.gap .nm{color:var(--muted);font-style:italic}
-.mini{padding:2px 9px;font-size:13px;border-style:dashed;color:var(--muted)}
-.mini:hover{color:#fff}
+.mini{padding:3px 10px;font-size:13px;font-weight:600;border-color:#fff;color:#fff;white-space:nowrap}
+.mini:hover{background:#fff;color:#000}
+.row.fillable{cursor:pointer}
+.row.fillable:hover{background:#121212}
+.row.fillable:hover .nm{color:#fff}
 .check{width:24px;height:24px;border-radius:6px;border:1.5px solid var(--line2);background:transparent;padding:0;display:grid;place-items:center;color:#000}
 .check:hover{border-color:#fff}
 .check[aria-pressed="true"]{background:#fff;border-color:#fff}
 .check svg{opacity:0}
 .check[aria-pressed="true"] svg{opacity:1}
 .row .end .mini{margin-right:-2px}
-.row{grid-template-columns:64px 9px minmax(0,1fr) auto 44px}
+.row{grid-template-columns:64px 9px minmax(0,1fr) auto 64px}
 
 /* right */
 .donebar{height:4px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:10px}
@@ -169,7 +172,7 @@ input:focus,textarea:focus{outline:none;border-color:#fff}
 @media (min-width:760px) and (max-width:1180px){
   body{font-size:15px}
   .panel,.card{padding:12px 14px}
-  .row{grid-template-columns:48px 8px minmax(0,1fr) 40px;gap:8px;padding:0 6px}
+  .row{grid-template-columns:48px 8px minmax(0,1fr) 60px;gap:8px;padding:0 6px}
   .row .len,.row .t small{display:none}
   .row .t{font-size:16px}
   .row .nm{font-size:15px}
@@ -182,7 +185,7 @@ input:focus,textarea:focus{outline:none;border-color:#fff}
 }
 @media (max-width:759px){
   .grow,.tl{flex:none}
-  .row{flex:none;min-height:46px;grid-template-columns:60px 9px minmax(0,1fr) 44px}
+  .row{flex:none;min-height:46px;grid-template-columns:60px 9px minmax(0,1fr) 64px}
   .row .len{display:none}
   .scroll{overflow:visible}
 }
@@ -231,7 +234,7 @@ input:focus,textarea:focus{outline:none;border-color:#fff}
         <button class="solid" id="rebuild">Rebuild</button>
         <button class="quiet" id="undo" hidden>Undo</button>
         <button id="replan">Change answers</button>
-        <button id="fillAll">Fill open time</button>
+        <button id="fillAll">Fill empty slots with free time</button>
       </div>
       <div class="rbstatus" id="rbStatus" role="status"></div>
       <div class="note" id="rbNote" hidden>Rebuild uses Claude, so it only works on the claude.ai version. Here, use Change answers.</div>
@@ -512,7 +515,7 @@ function render(){
       row.innerHTML=`<div class="t">${tm}<small>${ap}</small></div>${b.gap||isSleep?'<span class="dot empty" aria-hidden="true"></span>':dot(catOf(b))}<div class="nm">${esc(b.name)}</div><div class="len">${isSleep?'':dur(b.end-b.start)}</div><div class="end"></div>`;
       const end=row.querySelector('.end');
       if(checkable) end.appendChild(checkBtn(b.id,b.name));
-      if(b.gap&&b.end>n){const fb=document.createElement('button');fb.className='mini';fb.textContent='Fill';fb.setAttribute('aria-label','Fill open time from '+fmt(b.start));fb.onclick=()=>openFill(b);end.appendChild(fb)}
+      if(b.gap){row.classList.add('fillable');row.onclick=()=>openFill(b);const fb=document.createElement('button');fb.className='mini';fb.textContent='+ Fill';fb.setAttribute('aria-label','Fill open time from '+fmt(b.start));fb.onclick=e=>{e.stopPropagation();openFill(b)};end.appendChild(fb)}
       tl.appendChild(row);
     };
     list.forEach(b=>addRow(b,false));
