@@ -77,7 +77,7 @@ input:focus,textarea:focus{outline:none;border-color:#fff}
 .colon{display:flex;flex-direction:column;gap:calc(var(--h)*.2)}
 .colon i{display:block;width:calc(var(--h)*.07);height:calc(var(--h)*.07);border-radius:50%;background:#fff}
 
-/* now + rebuild */
+/* now card */
 .card{width:min(600px,100%);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .nowk{font-size:14px;color:var(--muted)}
 .nowname{font-size:clamp(24px,2.6vw,36px);font-weight:600;line-height:1.15;margin:2px 0 4px;text-wrap:balance}
@@ -221,24 +221,10 @@ input:focus,textarea:focus{outline:none;border-color:#fff}
       <div class="next" id="nextLine"></div>
     </section>
 
-    <section class="card rb dayonly">
-      <label for="rbText"><h2>What's different?</h2></label>
-      <textarea id="rbText" rows="2" placeholder="e.g. Gym at 9 PM, back and biceps. Football with friends 5 to 7."></textarea>
-      <div class="chips">
-        <button class="chip" data-rb="Move gym to 9 PM">Move gym to 9 PM</button>
-        <button class="chip" data-rb="Skip gym today">Skip gym</button>
-        <button class="chip" data-rb="Add 1 more hour of study">+1 hour study</button>
-        <button class="chip" data-rb="Going out with friends tonight">Going out tonight</button>
-      </div>
-      <div class="rbrow">
-        <button class="solid" id="rebuild">Rebuild</button>
-        <button class="quiet" id="undo" hidden>Undo</button>
-        <button id="replan">Change answers</button>
-        <button id="fillAll">Fill empty slots with free time</button>
-      </div>
-      <div class="rbstatus" id="rbStatus" role="status"></div>
-      <div class="note" id="rbNote" hidden>Rebuild uses Claude, so it only works on the claude.ai version. Here, use Change answers.</div>
-    </section>
+    <div class="rbrow dayonly" style="justify-content:center">
+      <button class="solid" id="replan">Change answers</button>
+      <button id="fillAll">Fill empty slots with free time</button>
+    </div>
     <div class="warn dayonly" id="warn"></div>
 
     <section class="card planonly" id="setup">
@@ -559,65 +545,8 @@ function render(){
   $('doneText').textContent=`${todo.doneCount+st.doneCount} of ${todo.count+st.count} done`;
   const miss=[...A.vars,...A.study].filter(v=>day.unplaced.includes(v.id)&&!day.done[v.id]&&!blockOf(v.id)).map(v=>v.name);
   $('warn').textContent=miss.length?`Didn't fit before bedtime: ${miss.join(', ')}.`:'';
-  $('undo').hidden=!ls.get('dayplan.undo.'+day.date,null);
 }
 $('replan').onclick=()=>openSetup(day);
-
-/* ---------- rebuild with Claude (claude.ai only) ---------- */
-let sample=null;
-const RB_ERR={not_granted:'Claude isn\'t allowed on this page. Reload and choose Allow.',rate_limited:'You\'ve hit a usage limit. Try again later.',session_expired:'Sign in to Claude again, then retry.',invalid_json:'The answer came back garbled. Press Rebuild again.',refused:'That change couldn\'t be made. Try wording it differently.'};
-function rbStatus(msg,err){const s=$('rbStatus');s.textContent=msg||'';s.classList.toggle('err',!!err)}
-$('rebuild').onclick=async()=>{
-  const text=$('rbText').value.trim();
-  if(!text){rbStatus('Type what you want to change first.',true);$('rbText').focus();return}
-  if(!sample){rbStatus('Rebuild only works on the claude.ai version of this page. Use Change answers instead.',true);return}
-  const btn=$('rebuild'); btn.disabled=true; rbStatus('Rebuilding…');
-  const blocks=day.blocks.filter(b=>b.kind!=='wind').map(b=>({name:b.name,kind:b.kind,start:hhmm(b.start),end:hhmm(b.end),done:!!day.done[b.id]}));
-  const prompt=`You adjust a one-day schedule. Reply with only JSON: {"wind":"HH:MM","blocks":[{"name":"...","kind":"fixed|var|study|free","start":"HH:MM","end":"HH:MM"}]}
-
-Current schedule (24-hour times; times after midnight like "00:30" belong to the same night):
-${JSON.stringify(blocks)}
-Wind-down time: ${A_wind()} (sleep 15 minutes later). Time now: ${hhmm(nowRaw())}.
-
-The person wants: """${text.slice(0,1500)}"""
-
-Rules:
-- Make exactly the change asked for. Keep everything else as it is unless it has to move to make room.
-- Blocks marked done, and blocks that already ended before the time now, stay unchanged.
-- No overlaps. Everything must end by the wind-down time, unless they ask to change bedtime (then set "wind").
-- kind: "fixed" for things at a set clock time, "study" for studying, "free" for free time, "var" for everything else.
-- Don't add anything they didn't ask for.`;
-  try{
-    const v=await sample.json(prompt,{modelTier:'default',cache:false});
-    if(!v||!Array.isArray(v.blocks)||!v.blocks.length) throw {code:'invalid_json'};
-    const W=onAxis(v.wind)??onAxis(day.answers.wind);
-    const byName=new Map(day.blocks.map(b=>[b.name.toLowerCase(),b]));
-    const items=[...day.answers.vars.map(x=>[x,'var']),...day.answers.study.map(x=>[x,'study'])];
-    const out=[];
-    for(const r of v.blocks){
-      const name=String(r.name||'').trim().slice(0,80); let a=onAxis(r.start), e=onAxis(r.end);
-      if(!name||a==null||e==null) continue; if(e<=a) e+=1440; if(a>=W) continue; e=Math.min(e,W);
-      const kind=['fixed','var','study','free'].includes(r.kind)?r.kind:'var';
-      const old=byName.get(name.toLowerCase());
-      let id=old?.id;
-      if(!id){
-        const it=items.find(([x])=>x.name.trim().toLowerCase()===name.toLowerCase());
-        if(it) id=it[0].id;
-        else{ id=uid(); if(kind==='var'||kind==='study') (kind==='study'?day.answers.study:day.answers.vars).push({id,name,hours:String(+((e-a)/60).toFixed(2))}); }
-      }
-      out.push({id,kind,name,start:a,end:e});
-    }
-    if(!out.length) throw {code:'invalid_json'};
-    ls.set('dayplan.undo.'+day.date,JSON.parse(JSON.stringify(day)));
-    day.answers.wind=hhmm(W);
-    day.blocks=[...out,{id:'wind',kind:'wind',name:'Wind down, no screens',start:W,end:W+15}].sort((x,y)=>x.start-y.start);
-    day.unplaced=[]; save(); $('rbText').value=''; rbStatus('Done. Your day has been rebuilt.'); render();
-  }catch(e){ rbStatus(RB_ERR[e&&e.code]||'Something went wrong. Press Rebuild to try again.',true) }
-  finally{ btn.disabled=false }
-};
-const A_wind=()=>day.answers.wind;
-$('undo').onclick=()=>{const prev=ls.get('dayplan.undo.'+day.date,null);if(!prev)return;day=prev;try{localStorage.removeItem('dayplan.undo.'+day.date)}catch(e){}save();rbStatus('Undone.');render()};
-document.querySelectorAll('[data-rb]').forEach(c=>c.onclick=()=>{const ta=$('rbText');ta.value=(ta.value.trim()?ta.value.trim()+'. ':'')+c.dataset.rb;ta.focus()});
 
 /* ---------- fill open time ---------- */
 function closeFill(){ $('fillModal').hidden=true; $('fillBox').innerHTML=''; fillOpen=null; render(); }
@@ -716,8 +645,7 @@ loadDay(); tick(); flipTick(); setInterval(flipTick,1000); setInterval(tick,3000
    shared and nobody sees anyone else's plan. Anywhere else (e.g. Vercel) it saves in the browser. */
 (async()=>{
   let db=null,me=null;
-  try{ if(typeof claude!=='undefined'&&claude.use){ sample=await claude.use('sample'); db=await claude.use('db'); const u=await claude.use('user'); me=u?await u.id():null } }catch(e){db=null}
-  if(!sample) $('rbNote').hidden=false;
+  try{ if(typeof claude!=='undefined'&&claude.use){ db=await claude.use('db'); const u=await claude.use('user'); me=u?await u.id():null } }catch(e){db=null}
   if(!db||!me) return;
   const col=db.collection('data/users/'+me);
   let chain=Promise.resolve(), writable=true;
